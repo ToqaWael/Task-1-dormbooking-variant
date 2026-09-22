@@ -26,13 +26,23 @@ const updateSchema = Joi.object({
 
 //helper method to wrap a booking document into a public-facing object
       function publicBooking(b) {
+
+        let bookedByData = booking.bookedBy;
+
+  if (b.bookedBy && typeof b.bookedBy === 'object' && b.bookedBy._id) {
+    bookedByData = {
+      id: b.bookedBy._id,
+      name: b.bookedBy.name,
+      email: b.bookedBy.email,
+    };
+  }
         return {
     id: b._id,
     roomNumber: b.roomNumber,
     startDate: b.startDate,
     endDate: b.endDate,
     purpose: b.purpose,
-    bookedBy: b.bookedBy,
+    bookedBy: bookedBy ? bookedByData : null,
     createdAt: b.createdAt,
     updatedAt: b.updatedAt
   };
@@ -58,16 +68,15 @@ async function hasBookingConflict(roomNumber, startDate, endDate, ignoreBookingI
 // GET /api/bookings
 export async function getAllBookings(req, res, next) {
   try {
-    const bookings = await Booking.find().sort({ createdAt: -1 }).lean();
+    const bookings = await Booking.find().populate('bookedBy', 'name email').sort({ createdAt: -1 }).lean();
     res.json(bookings.map(publicBooking));
   } catch (err) { next(err); }
 }
 
 // GET /api/bookings/:id
-// TODO: implement per README.md sections   5.
 export async function getBooking(req, res, next) {
    try {
-     const booking = await Booking.findById(req.params.id);
+     const booking = await Booking.findById(req.params.id).populate('bookedBy', 'name email');
      if (!booking) return res.status(404).json({ message: 'Booking not found' });
      res.json({ booking: publicBooking(booking) });
    } catch (err) { next(err); }
@@ -92,13 +101,12 @@ export async function createBooking(req, res, next) {
 }
 
 // PATCH /api/bookings/:id
-// TODO: implement per README.md sections  5.
 export async function updateBooking(req, res, next) {
   try {
     const { id } = req.params;
 
     //Fetch existing booking
-    const booking = await Booking.findById(id);
+    const booking = await Booking.findById(id).populate('bookedBy', 'name email');
     if (!booking) {
       return res.status(404).json({ message: 'Booking not found' });
     }
@@ -135,7 +143,6 @@ export async function updateBooking(req, res, next) {
 }
 
 // DELETE /api/bookings/:id
-// TODO: implement per README.md sections  5.
 export async function deleteBooking(req, res, next) {
   try {
     const doc = await Booking.findByIdAndDelete(req.params.id);
