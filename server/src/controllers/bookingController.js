@@ -1,6 +1,27 @@
 import { Booking } from '../models/Booking.js';
 
 // TODO: write a validation schema for create/update per README.md section 2.
+const Joi = require('joi');
+
+// Schema for validating booking data to be created
+const createSchema = Joi.object({
+  roomNumber: Joi.string().required(),
+  startDate: Joi.date().required(),
+  endDate: Joi.date().greater(Joi.ref('startDate')).required(), // must end AFTER it starts
+  purpose: Joi.string().required(),
+  bookedBy: Joi.string().required(),
+});
+
+// Schema for validating booking data to be updated
+const updateSchema = Joi.object({
+  roomNumber: Joi.string(),
+  startDate: Joi.date(),
+  endDate: Joi.date().greater(Joi.ref('startDate')), // must end AFTER it starts
+  purpose: Joi.string(),
+  bookedBy: Joi.string(),
+}).or('roomNumber', 'startDate', 'endDate', 'purpose', 'bookedBy'); // at least one field must be provided
+
+
 
 // TODO: per README.md section 4, you will need a way to detect whether a
 // proposed booking conflicts with an existing one on the same room.
