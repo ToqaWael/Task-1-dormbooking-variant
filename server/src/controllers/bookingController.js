@@ -1,6 +1,5 @@
 import { Booking } from '../models/Booking.js';
 
-// TODO: write a validation schema for create/update per README.md section 2.
 const Joi = require('joi');
 
 // Schema for validating booking data to be created
@@ -23,45 +22,124 @@ const updateSchema = Joi.object({
 
 
 
-// TODO: per README.md section 4, you will need a way to detect whether a
-// proposed booking conflicts with an existing one on the same room.
+
+
+//helper method to wrap a booking document into a public-facing object
+      function publicBooking(b) {
+        return {
+    id: b._id,
+    roomNumber: b.roomNumber,
+    startDate: b.startDate,
+    endDate: b.endDate,
+    purpose: b.purpose,
+    bookedBy: b.bookedBy,
+    createdAt: b.createdAt,
+    updatedAt: b.updatedAt
+  };
+}
+
+//helper method to check if a proposed booking conflicts with an existing one
+async function hasBookingConflict(roomNumber, startDate, endDate, ignoreBookingId = null) {
+  const query = {
+    roomNumber: roomNumber,
+    startDate: { $lt: new Date(endDate) },   // starts BEFORE proposed end time
+    endDate: { $gt: new Date(startDate) },    // ends AFTER proposed start time
+  };
+
+  // If we are UPDATING an existing booking, ignore itself so it doesn't conflict with its own current time slot!
+  if (ignoreBookingId) {
+    query._id = { $ne: ignoreBookingId };
+  }
+
+  const existingBooking = await Booking.findOne(query);
+  return Boolean(existingBooking); // Returns true if a conflict exists, false if room is free
+}
 
 // GET /api/bookings
-// TODO: implement per README.md section 3.
 export async function getAllBookings(req, res, next) {
   try {
-    // TODO
+    const bookings = await Booking.find().sort({ createdAt: -1 }).lean();
+    res.json(bookings.map(publicBooking));
   } catch (err) { next(err); }
 }
 
 // GET /api/bookings/:id
-// TODO: implement per README.md sections 3 and 5.
+// TODO: implement per README.md sections   5.
 export async function getBooking(req, res, next) {
-  try {
-    // TODO
-  } catch (err) { next(err); }
+   try {
+     const booking = await Booking.findById(req.params.id);
+     if (!booking) return res.status(404).json({ message: 'Booking not found' });
+     res.json({ booking: publicBooking(booking) });
+   } catch (err) { next(err); }
 }
 
 // POST /api/bookings
-// TODO: implement per README.md sections 3 and 4.
 export async function createBooking(req, res, next) {
   try {
-    // TODO
+    const { value, error } = createSchema.validate(req.body);
+    if (error) return res.status(400).json({ message: error.message });
+    
+    //  Check for overlapping bookings using the helper
+    const isConflict = await hasBookingConflict(value.roomNumber, value.startDate, value.endDate);
+    if (isConflict) {
+      return res.status(409).json({ message: 'Booking conflicts with an existing booking' });
+    }
+
+    // If no conflict, create the booking
+    const booking = await Booking.create(value);
+    res.status(201).json({ booking: publicBooking(booking) });
   } catch (err) { next(err); }
 }
 
 // PATCH /api/bookings/:id
-// TODO: implement per README.md sections 3, 4, and 5.
+// TODO: implement per README.md sections  5.
 export async function updateBooking(req, res, next) {
   try {
-    // TODO
+    const { id } = req.params;
+
+    //Fetch existing booking
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    //  Validate input payload
+    const { value, error } = updateSchema.validate(req.body, {
+      abortEarly: false,
+      stripUnknown: true,
+    });
+   
+    if (error) return res.status(400).json({ message: error.message });
+
+    // Merge new values with existing DB data
+    const roomNumber = value.roomNumber || booking.roomNumber;
+    const startDate = value.startDate || booking.startDate;
+    const endDate = value.endDate || booking.endDate;
+
+    // Verify end date precedes start date
+    if (new Date(startDate) >= new Date(endDate)) {
+      return res.status(400).json({ message: 'endDate must be strictly after startDate' });
+    }
+
+    // Check for schedule conflicts (excluding current booking ID)
+    const isConflict = await hasBookingConflict(roomNumber, startDate, endDate, id);
+    if (isConflict) {
+      return res.status(409).json({ message: 'Booking conflicts with an existing booking' });
+    }
+
+    // If no conflict, update the booking
+    Object.assign(booking, value);
+    await booking.save();
+    res.json({ booking: publicBooking(booking) });
   } catch (err) { next(err); }
 }
 
 // DELETE /api/bookings/:id
-// TODO: implement per README.md sections 3 and 5.
+// TODO: implement per README.md sections  5.
 export async function deleteBooking(req, res, next) {
   try {
-    // TODO
+    const doc = await Booking.findByIdAndDelete(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'Booking not found' });
+    res.json({ message: 'Booking deleted successfully' });
   } catch (err) { next(err); }
 }
